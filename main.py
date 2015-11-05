@@ -25,7 +25,7 @@ if __name__ == '__main__':
     files = [os.path.join(dir_path, x) for x in files]
 
     # read files
-    left, top, right, bottom = 0, 0, 512, 512
+    left, top, right, bottom = 512, 512, 1024, 1024
     imgs = [cv2.imread(x, 0)[left:right, top:bottom]
             for x in files[start_frame:end_frame]]
 
@@ -71,12 +71,15 @@ if __name__ == '__main__':
 
     def generate_frames():
         t = 0
+        linecolor = (np.random.randint(100, 255), np.random.randint(
+            100, 255), np.random.randint(100, 255))
         while True:
             # Capture frame-by-frame
             frame = next(cyclableImages)
-            original = np.copy(frame)
+            # original = np.copy(frame)
             a = cv2.getTrackbarPos('a', 'controls')
             b = cv2.getTrackbarPos('b', 'controls')
+
             # blar
             frame = cv2.medianBlur(frame, 15)
             # frame = cv2.GaussianBlur(frame, (5, 5), 2)
@@ -84,25 +87,24 @@ if __name__ == '__main__':
 
             hist, bins = np.histogram(frame.flatten(), 256, [0, 256])
 
-            cdf = hist.cumsum()
-            cdf_normalized = cdf * hist.max() / cdf.max()
-
             clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(20, 20))
 
             frame = clahe.apply(frame)
 
-            _, frame = cv2.threshold(frame, 100, 255, cv2.THRESH_BINARY)
+            # _, frame = cv2.threshold(frame, 100, 255, cv2.THRESH_BINARY)
 
-            # frame = cv2.adaptiveThreshold(frame, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY,11,4)
+            
+            frame = cv2.adaptiveThreshold(
+                frame, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 11, 4)
 
             contours, hierarchy = cv2.findContours(
                 frame, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
             frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
-            cv2.drawContours(frame, contours, -1, (0, 255, 0), 3)
+            cv2.drawContours(frame, contours, -1, linecolor, 3)
             area = 0
             for i in contours:
-                area = area + cv2.contourArea(i)
+                area = area + cv2.arcLength(i, True)
             # print area
             t = t + 0.1
             yield t, area
@@ -113,18 +115,22 @@ if __name__ == '__main__':
                 break
 
     def update(data):
-        # update the data
-
+        # update the data 
         t, y = data
         y = y
 
         xdata.append(t)
         ydata.append(y)
         xmin, xmax = ax.get_xlim()
+        ymin, ymax = ax.get_ylim()
 
         if t >= xmax:
             ax.set_xlim(xmin, 2 * xmax)
             ax.figure.canvas.draw()
+        if y >= ymax:
+            ax.set_ylim(ymin, 2 * ymax)
+            ax.figure.canvas.draw()
+
         line.set_data(xdata, ydata)
 
         return line,
