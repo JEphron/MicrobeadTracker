@@ -54,20 +54,23 @@ def process_and_draw(frames):
         # .. process ..
 
         frame = cv2.GaussianBlur(frame, (7, 7), 2)
-        cv2.imshow('original', frame)
         frame = cv2.adaptiveThreshold(frame, 255, cv2.ADAPTIVE_THRESH_MEAN_C,
                                       cv2.THRESH_BINARY, 19, 2)
         frame = cv2.medianBlur(frame, 21)
-        cv2.imshow('frame', frame)
         yield frame
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
 
 if __name__ == '__main__':
-    dir_path = sys.argv[1]
-    start_frame = int(sys.argv[2])
-    end_frame = int(sys.argv[3])
-    mode = sys.argv[4]
+    try:
+        dir_path = sys.argv[1]
+        start_frame = int(sys.argv[2])
+        end_frame = int(sys.argv[3])
+        mode = sys.argv[4]
+    except:
+        print "Usage: python main.py sequencedirectory startframe endframe [raw|histogram|contour-area]"
+        sys.exit()
+
 
     # square for now
     width = 1024
@@ -107,7 +110,7 @@ if __name__ == '__main__':
 
         def init():
             ax.set_ylim(30000, 40000)  # todo: autoscale this!
-            ax.set_xlim(0, 10)
+            ax.set_xlim(0, len(img_sequence))
             del xdata[:]
             del ydata[:]
             line.set_data(xdata, ydata)
@@ -122,41 +125,60 @@ if __name__ == '__main__':
             xmin, xmax = ax.get_xlim()
             ymin, ymax = ax.get_ylim()
 
-            print ymax, max(ydata), ymin, min(ydata)
-            ax.set_ylim(min(ydata), max(ydata))
+            # print ymax, max(ydata), ymin, min(ydata)
+            ax.set_ylim(min(ydata)-1, max(ydata)+1)
             ax.figure.canvas.draw()
 
             if t >= xmax:
                 ax.set_xlim(xmin, 2 * xmax)
                 ax.figure.canvas.draw()
 
-            # if y >= ymax:
-            #     ax.set_ylim(ymin, 2 * ymax)
-            #     ax.figure.canvas.draw()
-
-
             line.set_data(xdata, ydata)
 
             return line,
 
+        def get_contours(img):
+            contours, hierarchy = cv2.findContours(
+                img, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+            
+            return contours
+
         def gen_area():
+            # time axis for the plot
             t = 0
+        
+            # calculate the mean area of contours in the final frame
+            average_area = 0
+            final_frame_contours = get_contours(img_sequence[-1])
+            for i in final_frame_contours:
+                average_area = average_area + cv2.arcLength(i, True)
+            average_area = average_area / len(final_frame_contours)
+
+            min_area = sys.maxint
             for frame in process_and_draw(cyclable_frames):
-                contours, hierarchy = cv2.findContours(
-                    frame, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-                frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
-                cv2.drawContours(frame, contours, -1, (0, 255, 0), 3)
-                
+                # black_pixel_percentage = 1 - (np.sum(frame)/255) / (frame.shape[0]*frame.shape[1])
+                contours = get_contours(frame)
+
                 area = 0
+                average_area = 0
+                
                 for i in contours:
                     area = area + cv2.arcLength(i, True)
-                # print area
-                t = t + 0.1
-                yield t, area
+                
+                if average_area is 0:
+                    average_area = area / len(contours)
+                
+                if area/average_area < min_area:
+                    min_area = area/average_area
+                    print min_area
+                
+                t = t + 1
+
+                yield t, min_area
 
         frame_generator = functools.partial(process_and_draw, cyclable_frames)
 
-        ani = animation.FuncAnimation(fig, update, gen_area, blit=False, interval=10,
+        ani = animation.FuncAnimation(fig, update, gen_area, blit=False, interval=100,
                                       repeat=False, init_func=init)
 
         # ani = animation.FuncAnimation(fig, update, generate_frames, interval=100)
