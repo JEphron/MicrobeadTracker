@@ -13,6 +13,7 @@ import matplotlib.animation as animation
 import timeit
 import functools
 import argparse
+import csv
 
 def read_image_sequence(dir_path, start_frame, end_frame, crop_rect):
     """ Reads in a sequence of .pgm files from a directory and returns it
@@ -179,9 +180,20 @@ if __name__ == '__main__':
 
             yield t/args.fps, min_area
 
+        # done with the data
+        # todo: move this part somewhere else
+
         if args.png:
-            print "saved graph to", args.png
             plt.savefig(args.png)
+            print "saved graph to {}".format(args.png)
+        
+        if args.csv:
+            with open(args.csv, 'wb') as csvfile:
+                csvwriter = csv.writer(csvfile)
+                for x, y in zip(xdata, ydata):
+                    csvwriter.writerow([x, round(y)])
+            print "saved csv to {}".format(args.csv)
+                
 
 
     # frame_generator = functools.partial(process_frames, unprocessed_frames)
