@@ -12,9 +12,7 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import timeit
 import functools
-
-# boring
-
+import argparse
 
 def read_image_sequence(dir_path, start_frame, end_frame, crop_rect):
     """ Reads in a sequence of .pgm files from a directory and returns it
@@ -45,13 +43,15 @@ def read_image_sequence(dir_path, start_frame, end_frame, crop_rect):
 # apply circle algorithm to those centers
 
 
-def process_and_draw(frames):
+def process_frames(frames):
     """ Do fun stuff. 
             frames -- iteratable containing the images to process/draw
             Should yield some data for matplotlib 
     """
+    print len(frames)
     for frame in frames:
         # .. process ..
+        # cv2.imshow('blah', frame)
 
         frame = cv2.GaussianBlur(frame, (7, 7), 2)
         frame = cv2.adaptiveThreshold(frame, 255, cv2.ADAPTIVE_THRESH_MEAN_C,
@@ -61,126 +61,131 @@ def process_and_draw(frames):
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
 
-if __name__ == '__main__':
-    try:
-        dir_path = sys.argv[1]
-        start_frame = int(sys.argv[2])
-        end_frame = int(sys.argv[3])
-        mode = sys.argv[4]
-    except:
-        print "Usage: python main.py sequencedirectory startframe endframe [raw|histogram|contour-area]"
-        sys.exit()
+def get_contours(img):
+    contours, hierarchy = cv2.findContours(
+        img, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    
+    return contours
 
+def show_contours(contours, frame, linecolor):
+    frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)        
+    cv2.drawContours(frame, contours, -1, linecolor, 3)
+    # cv2.imshow('contours', frame)
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(description='Analyze a sequence of frames from the microbead camera')
+    parser.add_argument("indirectory", type=str, help="path to a directory containing a sequence of sequentially titled .pgm files")
+    parser.add_argument("startframe", type=int, help="the index of the first frame (integer)")
+    parser.add_argument("endframe", type=int, help="the index of the last frame (integer)")
+    parser.add_argument("fps", type=float, help="frames per second (integer or float)")
+    parser.add_argument("--show", action="store_true", help="toggles displaying the image sequence")
+    parser.add_argument("--png", help="output graph to a .png image")
+    parser.add_argument("--csv", help="output data to a .csv file")
+    
+    args = parser.parse_args()
+
+    # args.show # boolean
+    args.png # string
+    args.csv # string
 
     # square for now
     width = 1024
     crop_rect = (0, 0, width, width) 
     img_sequence = read_image_sequence(
-        dir_path, start_frame, end_frame, crop_rect)
-    print 'read in', end_frame - start_frame, 'frames'
+        args.indirectory, args.startframe, args.endframe, crop_rect)
+    print 'read in', args.endframe - args.startframe, 'frames'
 
-    cyclable_frames = itertools.cycle(img_sequence)
+    # unprocessed_frames = itertools.cycle(img_sequence) if args.loop else img_sequence
+    
+    unprocessed_frames = img_sequence # eh
 
-    if mode == 'raw' or mode == '':
-        for i in process_and_draw(cyclable_frames):
-            pass
-    elif mode == 'histogram':
-        fig, ax = plt.subplots()
+    fig, ax = plt.subplots()
+    fig.suptitle('Microbead Analysis', fontsize=20)
+    plt.xlabel('time (seconds)', fontsize=18)
+    plt.ylabel('beads', fontsize=16)
+    line, = ax.plot([], [], lw=2)
+    ax.grid()
+    xdata, ydata = [], []
+    
+    global_ymin = 0
+    global_ymax = 1
 
-        def animate(param):
-            param = param.ravel()
-            print param
-            plt.clf()
-            plt.hist(param, 256, [0, 256])
+    def init():
+        ax.set_ylim(0, 500)
+        ax.set_xlim(0, len(img_sequence)/args.fps)
+        del xdata[:]
+        del ydata[:]
+        line.set_data(xdata, ydata)
+        return line,
 
-        # bind cyclable_frames to the first argument of process_and_draw
-        frame_generator = functools.partial(process_and_draw, cyclable_frames)
-        # animate the histogram!
-        ani = animation.FuncAnimation(fig, animate, frame_generator, interval=10,
-                                      repeat=False, blit=False)
-        plt.show()
-    elif mode == 'contour-area':
-        fig, ax = plt.subplots()
-        line, = ax.plot([], [], lw=2)
-        ax.grid()
-        xdata, ydata = [], []
-        
-        global_ymin = 0
-        global_ymax = 1
+    def update(data):
+        # update the data
+        t, y = data
 
-        def init():
-            ax.set_ylim(30000, 40000)  # todo: autoscale this!
-            ax.set_xlim(0, len(img_sequence))
-            del xdata[:]
-            del ydata[:]
-            line.set_data(xdata, ydata)
-            return line,
+        xdata.append(t)
+        ydata.append(y)
+        xmin, xmax = ax.get_xlim()
+        ymin, ymax = ax.get_ylim()
 
-        def update(data):
-            # update the data
-            t, y = data
+        # print ymax, max(ydata), ymin, min(ydata)
+        ax.set_ylim(min(ydata)-1, max(ydata)+1)
+        ax.figure.canvas.draw()
 
-            xdata.append(t)
-            ydata.append(y)
-            xmin, xmax = ax.get_xlim()
-            ymin, ymax = ax.get_ylim()
-
-            # print ymax, max(ydata), ymin, min(ydata)
-            ax.set_ylim(min(ydata)-1, max(ydata)+1)
+        if t >= xmax:
+            ax.set_xlim(xmin, 2 * xmax)
             ax.figure.canvas.draw()
 
-            if t >= xmax:
-                ax.set_xlim(xmin, 2 * xmax)
-                ax.figure.canvas.draw()
+        line.set_data(xdata, ydata)
 
-            line.set_data(xdata, ydata)
+        return line,
 
-            return line,
+    def gen_area():
+        # time axis for the plot
+        t = 0
+    
+        # calculate the mean area of contours in the final frame
+        average_area = 0
+        final_frame_contours = get_contours(img_sequence[-1])
+        for i in final_frame_contours:
+            average_area = average_area + cv2.arcLength(i, True)
+        average_area = average_area / len(final_frame_contours)
 
-        def get_contours(img):
-            contours, hierarchy = cv2.findContours(
-                img, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        min_area = sys.maxint
+        for frame in process_frames(unprocessed_frames):
+            if args.show:
+                cv2.imshow('window', frame)
+            contours = get_contours(frame) # note: modifies source image
+            show_contours(contours, frame, (0, 255, 0))
             
-            return contours
-
-        def gen_area():
-            # time axis for the plot
-            t = 0
-        
-            # calculate the mean area of contours in the final frame
+            area = 0
             average_area = 0
-            final_frame_contours = get_contours(img_sequence[-1])
-            for i in final_frame_contours:
-                average_area = average_area + cv2.arcLength(i, True)
-            average_area = average_area / len(final_frame_contours)
+            
+            for i in contours:
+                area = area + cv2.arcLength(i, True)
+            
+            if average_area is 0:
+                average_area = area / len(contours)
+            
+            if area / average_area < min_area:
+                min_area = area / average_area
+                print min_area
 
-            min_area = sys.maxint
-            for frame in process_and_draw(cyclable_frames):
-                # black_pixel_percentage = 1 - (np.sum(frame)/255) / (frame.shape[0]*frame.shape[1])
-                contours = get_contours(frame)
+            # todo: don't do this
+            if min_area <  10:
+                break
+            
+            t = t + 1
 
-                area = 0
-                average_area = 0
-                
-                for i in contours:
-                    area = area + cv2.arcLength(i, True)
-                
-                if average_area is 0:
-                    average_area = area / len(contours)
-                
-                if area/average_area < min_area:
-                    min_area = area/average_area
-                    print min_area
-                
-                t = t + 1
+            yield t/args.fps, min_area
 
-                yield t, min_area
+        if args.png:
+            print "saved graph to", args.png
+            plt.savefig(args.png)
 
-        frame_generator = functools.partial(process_and_draw, cyclable_frames)
 
-        ani = animation.FuncAnimation(fig, update, gen_area, blit=False, interval=100,
-                                      repeat=False, init_func=init)
+    # frame_generator = functools.partial(process_frames, unprocessed_frames)
 
-        # ani = animation.FuncAnimation(fig, update, generate_frames, interval=100)
-        plt.show()
-
+    ani = animation.FuncAnimation(fig, update, gen_area, blit=False, interval=100,
+                                  repeat=False, init_func=init)
+    plt.show()
