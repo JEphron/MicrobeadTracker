@@ -38,11 +38,6 @@ def read_image_sequence(dir_path, start_frame, end_frame, crop_rect):
     imgs = [cv2.resize(x, x.shape * scale) for x in imgs]
     return imgs
 
-# idea:
-# downsample
-# compute circle centers
-# apply circle algorithm to those centers
-
 
 def process_frames(frames):
     """ Do fun stuff. 
@@ -52,12 +47,15 @@ def process_frames(frames):
     print len(frames)
     for frame in frames:
         # .. process ..
-        # cv2.imshow('blah', frame)
+        
 
         frame = cv2.GaussianBlur(frame, (7, 7), 2)
         frame = cv2.adaptiveThreshold(frame, 255, cv2.ADAPTIVE_THRESH_MEAN_C,
                                       cv2.THRESH_BINARY, 19, 2)
         frame = cv2.medianBlur(frame, 21)
+        # kernel = np.ones((7,7),np.uint8)
+        # frame = cv2.dilate(frame, kernel, iterations = 1)
+
         yield frame
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
@@ -86,13 +84,9 @@ if __name__ == '__main__':
     
     args = parser.parse_args()
 
-    # args.show # boolean
-    args.png # string
-    args.csv # string
-
     # square for now
     width = 1024
-    crop_rect = (0, 0, width, width) 
+    crop_rect = (0, 0, 2080, 1552) 
     img_sequence = read_image_sequence(
         args.indirectory, args.startframe, args.endframe, crop_rect)
     print 'read in', args.endframe - args.startframe, 'frames'
@@ -156,9 +150,10 @@ if __name__ == '__main__':
         for frame in process_frames(unprocessed_frames):
             if args.show:
                 cv2.imshow('window', frame)
+
             contours = get_contours(frame) # note: modifies source image
             show_contours(contours, frame, (0, 255, 0))
-            
+
             area = 0
             average_area = 0
             
