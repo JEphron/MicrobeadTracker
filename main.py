@@ -34,8 +34,10 @@ def read_image_sequence(dir_path, start_frame, end_frame, crop_rect):
     imgs = [cv2.imread(x, 0)[left:right, top:bottom]
             for x in files[start_frame:end_frame]]
     # scale here if desired
-    scale = 1
-    imgs = [cv2.resize(x, x.shape * scale) for x in imgs]
+    # scale = 1
+    # imgs = [cv2.resize(x, x.shape * scale) for x in imgs]
+    # cv2.imshow("wandow0", imgs[0])
+    # cv2.waitKey(10000)
     return imgs
 
 
@@ -45,17 +47,16 @@ def process_frames(frames):
             Should yield some data for matplotlib 
     """
     print len(frames)
+    counter = itertools.count()
     for frame in frames:
         # .. process ..
-        
-
+        # cv2.imwrite("out_raw/{num:03d}.png".format(num=next(counter)), frame)
         frame = cv2.GaussianBlur(frame, (7, 7), 2)
         frame = cv2.adaptiveThreshold(frame, 255, cv2.ADAPTIVE_THRESH_MEAN_C,
                                       cv2.THRESH_BINARY, 19, 2)
         frame = cv2.medianBlur(frame, 21)
-        # kernel = np.ones((7,7),np.uint8)
-        # frame = cv2.dilate(frame, kernel, iterations = 1)
-
+        # cv2.imshow("wandow", frame)
+        
         yield frame
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
@@ -66,10 +67,10 @@ def get_contours(img):
     
     return contours
 
-def show_contours(contours, frame, linecolor):
-    frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)        
-    cv2.drawContours(frame, contours, -1, linecolor, 3)
-    # cv2.imshow('contours', frame)
+# def show_contours(contours, frame, linecolor):
+#     frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)        
+#     cv2.drawContours(frame, contours, -1, linecolor, 3)
+#     cv2.imshow('contours', frame)
 
 if __name__ == '__main__':
 
@@ -86,7 +87,7 @@ if __name__ == '__main__':
 
     # square for now
     width = 1024
-    crop_rect = (0, 0, 2080, 1552) 
+    crop_rect = (0, 0, 664, 447) 
     img_sequence = read_image_sequence(
         args.indirectory, args.startframe, args.endframe, crop_rect)
     print 'read in', args.endframe - args.startframe, 'frames'
@@ -144,15 +145,21 @@ if __name__ == '__main__':
         final_frame_contours = get_contours(img_sequence[-1])
         for i in final_frame_contours:
             average_area = average_area + cv2.arcLength(i, True)
-        average_area = average_area / len(final_frame_contours)
+        final_average_area = average_area / len(final_frame_contours)
 
         min_area = sys.maxint
+        counter = itertools.count()
         for frame in process_frames(unprocessed_frames):
             if args.show:
                 cv2.imshow('window', frame)
 
             contours = get_contours(frame) # note: modifies source image
-            show_contours(contours, frame, (0, 255, 0))
+
+            # show_contours(contours, frame, (0, 255, 0))
+            frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)        
+            cv2.drawContours(frame, contours, -1, (0,0,255), 3)
+
+            # cv2.imwrite("out_proc_img/{num:03d}.png".format(num=next(counter)), frame)
 
             area = 0
             average_area = 0
@@ -163,6 +170,11 @@ if __name__ == '__main__':
             if average_area is 0:
                 average_area = area / len(contours)
             
+            est_num_beads = area / average_area
+
+
+
+            
             if area / average_area < min_area:
                 min_area = area / average_area
                 print min_area
@@ -172,7 +184,7 @@ if __name__ == '__main__':
                 break
             
             t = t + 1
-
+            plt.savefig("out_proc_fig/{num:03d}.png".format(num=t))
             yield t/args.fps, min_area
 
         # done with the data
